@@ -8,5 +8,5 @@
    ```
 3. Once the container is opened run:
    ```ruby
-   run_analysis_batch_example.sh
+   ./run_analysis_batch_example.sh
    ```
