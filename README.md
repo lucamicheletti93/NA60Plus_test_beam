@@ -14,4 +14,7 @@
 ## How to modify corry
 1. Outside the container copy the modified version of the file inside the directory <ins>/its-corryvreckan-tools</ins>
 2. Outside the container copy the script <ins>compile_corry_changes.sh</ins> inside the directory <ins>/its-corryvreckan-tools</ins>
-3. Inside the contained run the script <ins>compile_corry_changes.sh</ins>
+3. Inside the contained run the script:
+   ```ruby
+   ./compile_corry_changes.sh
+   ```
