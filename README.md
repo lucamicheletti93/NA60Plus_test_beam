@@ -2,7 +2,7 @@
 
 ## How to run corry
 1. Open the container
-2. In the /its-corryvreckan-tools run the command:
+2. In the reposotory /its-corryvreckan-tools run the command:
    ```ruby
    ./run_container.sh
    ```
