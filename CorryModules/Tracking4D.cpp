@@ -93,7 +93,7 @@ void Tracking4D::initialize() {
     title = "Clusters per track;clusters;tracks";
     clustersPerTrack = new TH1F("clustersPerTrack", title.c_str(), 10, -0.5, 9.5);
     title = "Track multiplicity;tracks;events";
-    tracksPerEvent = new TH1F("tracksPerEvent", title.c_str(), 100, -0.5, 99.5);
+    tracksPerEvent = new TH1F("tracksPerEvent", title.c_str(), 350, -0.5, 349.5);
     title = "Track angle X;angle_{x} [rad];events";
     trackAngleX = new TH1F("trackAngleX", title.c_str(), 2000, -0.01, 0.01);
     title = "Track angle Y;angle_{y} [rad];events";
