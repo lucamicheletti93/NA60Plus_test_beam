@@ -14,15 +14,21 @@
 #include <TCanvas.h>
 #include <TH1F.h>
 #include <TH2F.h>
+#include <TTree.h>
 #include <iostream>
+#include <vector>
+
 #include "core/module/Module.hpp"
 #include "objects/Cluster.hpp"
 #include "objects/Pixel.hpp"
 #include "objects/Track.hpp"
+#include "objects/CorryTree.hpp"
 
 namespace corryvreckan {
     /** @ingroup Modules
      */
+
+
     class Tracking4D : public Module {
 
     public:
@@ -43,9 +49,12 @@ namespace corryvreckan {
         TH1F* trackTimeTrigger;
         TH2F* trackTimeTriggerChi2;
         TH1F* tracksPerEvent;
+        TH2F* tracksPerEventVsEta;
         TH1F* trackAngleX;
         TH1F* trackAngleY;
         TH1F* tracksVsTime;
+        TH1F* meanClusterSizePerTrack;
+
         std::map<std::string, TH1F*> residualsX_local;
         std::map<std::string, TH1F*> residualsXwidth1_local;
         std::map<std::string, TH1F*> residualsXwidth2_local;
@@ -72,7 +81,6 @@ namespace corryvreckan {
         std::map<std::string, TH1F*> residualsYwidth3_global;
         std::map<std::string, TH1F*> pullY_global;
         std::map<std::string, TH1F*> residualsZ_global;
-        TH1F* meanClusterSizePerTrack;
 
         std::map<std::string, TH1F*> kinkX;
         std::map<std::string, TH1F*> kinkY;
@@ -94,6 +102,11 @@ namespace corryvreckan {
         std::map<std::shared_ptr<Detector>, XYVector> spatial_cuts_;
         std::string timestamp_from_;
         std::string track_model_;
+
+        // Tree with the tracks and event information
+        TTree* event_info;
+        CorryEvent* event_corry;
+        std::vector<double> eta_vector;
 
         // Function to calculate the weighted average timestamp from the clusters of a track
         double calculate_average_timestamp(const Track* track);

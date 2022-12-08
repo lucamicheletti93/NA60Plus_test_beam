@@ -18,6 +18,7 @@
 using namespace corryvreckan;
 using namespace std;
 
+
 Tracking4D::Tracking4D(Configuration& config, std::vector<std::shared_ptr<Detector>> detectors)
     : Module(config, std::move(detectors)) {
 
@@ -93,7 +94,9 @@ void Tracking4D::initialize() {
     title = "Clusters per track;clusters;tracks";
     clustersPerTrack = new TH1F("clustersPerTrack", title.c_str(), 10, -0.5, 9.5);
     title = "Track multiplicity;tracks;events";
-    tracksPerEvent = new TH1F("tracksPerEvent", title.c_str(), 350, -0.5, 349.5);
+    tracksPerEvent = new TH1F("tracksPerEvent", title.c_str(), 450, -0.5, 449.5);
+    title = "Track multiplicity;tracks;events";
+    tracksPerEventVsEta = new TH2F("tracksPerEventVsEta", title.c_str(), 450, -0.5, 449.5, 110, -0.5, 10.5);
     title = "Track angle X;angle_{x} [rad];events";
     trackAngleX = new TH1F("trackAngleX", title.c_str(), 2000, -0.01, 0.01);
     title = "Track angle Y;angle_{y} [rad];events";
@@ -105,6 +108,10 @@ void Tracking4D::initialize() {
     title = "Track time with respect to first trigger vs. track chi2;track time - trigger;track #chi^{2};events";
     trackTimeTriggerChi2 = new TH2F("trackTimeTriggerChi2", title.c_str(), 1000, -230.4, 230.4, 15, 0, 15);
     tracksVsTime = new TH1F("tracksVsTime", "Number of tracks vs. time; time [s]; # entries", 3e6, 0, 3e3);
+    event_info = new TTree("tree","test tree");
+    event_corry = new CorryEvent;
+    event_info->Branch("event",&event_corry);
+    //event_info->Branch("tracks",&track);
 
     // Loop over all planes
     for(auto& detector : get_regular_detectors(true)) {
@@ -301,6 +308,23 @@ StatusCode Tracking4D::run(const std::shared_ptr<Clipboard>& clipboard) {
 
     // Output track container
     TrackVector tracks;
+    CorryBeam beam;
+    beam.x = 0;
+    beam.y = 0;
+    beam.size = 0;
+    int beamMaxSize = 0;
+    auto tempClusters = clipboard->getData<Cluster>("ALPIDE_0");
+    for(auto tempCluster : tempClusters){
+        beamMaxSize = static_cast<int>(tempCluster->size());
+        if(beam.size < beamMaxSize){
+            beam.x = static_cast<float>(tempCluster->global().x());
+            beam.y = static_cast<float>(tempCluster->global().y());
+            beam.size = beamMaxSize;
+        }
+    }
+    event_corry->beam.x = beam.x;
+    event_corry->beam.y = beam.y;
+    event_corry->beam.size = beam.size;
 
     // Time cut for combinations of reference clusters and for reference track with additional detector
     auto time_cut_ref = std::max(time_cuts_[reference_first], time_cuts_[reference_last]);
@@ -539,6 +563,7 @@ StatusCode Tracking4D::run(const std::shared_ptr<Clipboard>& clipboard) {
         }
         clipboard->putData(tracks);
     }
+    //vtracks->clear();
     for(auto track : tracks) {
         // Fill track time within event (relative to event start)
         auto event = clipboard->getEvent();
@@ -559,11 +584,74 @@ StatusCode Tracking4D::run(const std::shared_ptr<Clipboard>& clipboard) {
             trackAngleX->Fill(atan(track->getDirection(track->getClusters().front()->detectorID()).X()));
             trackAngleY->Fill(atan(track->getDirection(track->getClusters().front()->detectorID()).Y()));
         }
+        const std::string a;
+        auto state = track->getState(a);
+        auto direction = track->getDirection(a);
+
+        float direction_x = static_cast<float>(direction.X());
+        float direction_y = static_cast<float>(direction.Y());
+        float direction_z = static_cast<float>(direction.Z());
+
+        CorryTrack trackCorry;
+        trackCorry.vx = direction_x;
+        trackCorry.vy = direction_y;
+        //trackCorry.vz = direction_z; always 1
+        trackCorry.px = static_cast<float>(state.X());
+        trackCorry.py = static_cast<float>(state.Y());
+        //trackCorry.pz = static_cast<float>(state.Z()); always 0
+        trackCorry.chi2ndof = static_cast<float>(track->getChi2ndof());
+
+        trackCorry.size1 = 0;
+        trackCorry.clx1 = 0;
+        trackCorry.cly1 = 0;
+        trackCorry.size2 = 0;
+        trackCorry.clx2 = 0;
+        trackCorry.cly2 = 0;
+        trackCorry.size3 = 0;
+        trackCorry.clx3 = 0;
+        trackCorry.cly3 = 0;
+        trackCorry.size4 = 0;
+        trackCorry.clx4 = 0;
+        trackCorry.cly4 = 0;
+        trackCorry.size5 = 0;
+        trackCorry.clx5 = 0;
+        trackCorry.cly5 = 0;
+
         // Make residuals
         auto trackClusters = track->getClusters();
         double totClustSize = 0;
         for(auto& trackCluster : trackClusters) {
             string detectorID = trackCluster->detectorID();
+            string str1 ("1");
+            string str2 ("2");
+            string str3 ("3");
+            string str4 ("4");
+            string str5 ("5");
+            if (detectorID.find(str1) != string::npos){
+                trackCorry.size1 = static_cast<int>(trackCluster->size());
+                trackCorry.clx1 = static_cast<float>(trackCluster->global().x());
+                trackCorry.cly1 = static_cast<float>(trackCluster->global().y());
+            }
+            else if (detectorID.find(str2) != string::npos){
+                trackCorry.size2 = static_cast<int>(trackCluster->size());
+                trackCorry.clx2 = static_cast<float>(trackCluster->global().x());
+                trackCorry.cly2 = static_cast<float>(trackCluster->global().y());
+            }
+            else if (detectorID.find(str3) != string::npos){
+                trackCorry.size3 = static_cast<int>(trackCluster->size());
+                trackCorry.clx3 = static_cast<float>(trackCluster->global().x());
+                trackCorry.cly3 = static_cast<float>(trackCluster->global().y());
+            }
+            else if (detectorID.find(str4) != string::npos){
+                trackCorry.size4 = static_cast<int>(trackCluster->size());
+                trackCorry.clx4 = static_cast<float>(trackCluster->global().x());
+                trackCorry.cly4 = static_cast<float>(trackCluster->global().y());
+            }
+            else{
+                trackCorry.size5 = static_cast<int>(trackCluster->size());
+                trackCorry.clx5 = static_cast<float>(trackCluster->global().x());
+                trackCorry.cly5 = static_cast<float>(trackCluster->global().y());
+            }
             ROOT::Math::XYZPoint globalRes = track->getGlobalResidual(detectorID);
             ROOT::Math::XYPoint localRes = track->getLocalResidual(detectorID);
             totClustSize+=static_cast<double>(trackCluster->size());
@@ -607,8 +695,18 @@ StatusCode Tracking4D::run(const std::shared_ptr<Clipboard>& clipboard) {
             residualsZ_global[detectorID]->Fill(globalRes.Z());
         }
 
+        //event_info->Fill();
 
         meanClusterSizePerTrack->Fill(totClustSize/static_cast<double>(track->getNClusters()));
+
+        event_corry->tracks.push_back(trackCorry);
+
+
+        double direction_tot = TMath::Sqrt(direction_x*direction_x+direction_y*direction_y+direction_z*direction_z);
+        double eta = TMath::Log((direction_tot+direction_z)/(direction_tot-direction_z))/2.;
+        eta_vector.push_back(eta);
+        
+
         for(auto& detector : get_regular_detectors(true)) {
             auto det = detector->getName();
 
@@ -629,6 +727,12 @@ StatusCode Tracking4D::run(const std::shared_ptr<Clipboard>& clipboard) {
         }
     }
     tracksPerEvent->Fill(static_cast<double>(tracks.size()));
+    for(auto eta: eta_vector){
+        tracksPerEventVsEta->Fill(static_cast<double>(tracks.size()),eta);
+    }
+    eta_vector.clear();
+    event_info->Fill();
+    event_corry->tracks.clear();
 
     LOG(DEBUG) << "End of event";
     return StatusCode::Success;
