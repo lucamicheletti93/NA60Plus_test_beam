@@ -1,9 +1,11 @@
-from ROOT import TH1D,TH2D, TFile, TF2, TCanvas, kRed, TLegend, TFile
+from ROOT import TH1D,TH2D, TFile, TF2, TCanvas, kRed, TLegend, TFile, gStyle, kRainBow
 import uproot
+import numpy as np
 import math
 
 #put here the path of the file you want to analyze
-path = "/home/giacomo/its-corryvreckan-tools/output/SPSNovember22/alignment_475230516221125231020.root"
+#path = "/home/giacomo/its-corryvreckan-tools/output/SPSNovember22/alignment_475230516221125231020.root"
+path = "/Users/lucamicheletti/its-corryvreckan-tools/output/SPSNovember22/alignment_475230516221125231020.root"
 
 df_beam = uproot.open(path)['Tracking4D/tree/event/beam'].arrays(library="pd")
 df_tracks = uproot.open(path)['Tracking4D/tree/event/tracks'].arrays(library="pd")
@@ -11,12 +13,17 @@ df_tracks = uproot.open(path)['Tracking4D/tree/event/tracks'].arrays(library="pd
 th1vxy = TH2D("tracks_vxy",";;",1000,-0.1,0.1,1000,-0.1,0.1)
 th1pxy = TH2D("tracks_pxy","track position at z = z_target; x (mm); y(mm)",2000,-5,5,2000,-5,5)
 th1res_pxy = TH2D("res_tracks_pxy","track position - Pb position at z = z_target; x_{trk}-x_{Pb} (mm); y_{trk}-y_{Pb} (mm)",2000,-5,5,2000,-5,5)
+th1res_pxy_sel = TH2D("res_tracks_pxy_sel","track position - Pb position at z = z_target; x_{trk}-x_{Pb} (mm); y_{trk}-y_{Pb} (mm)",2000,-5,5,2000,-5,5)
 th2_eta_vs_mult = TH2D("eta_vs_mult",";#eta;multiplicity;counts",100,0,10,400,-0.5,399.5)
 th2_eta_vs_mult_sel = TH2D("eta_vs_mult_sel",";#eta;multiplicity;counts",100,0,10,400,-0.5,399.5)
 th1_multi = TH1D("multiplicity","multiplicity;number of tracks per event;counts",400,-0.5,399.5)
 th1_multi_sel = TH1D("multiplicity selected","multiplicity;number of tracks per event;counts",400,-0.5,399.5)
 th1_eta = TH1D("eta","eta;#eta;counts",100,0,10)
 th1_eta_sel = TH1D("eta_sel","eta;#eta;counts",100,0,10)
+th1_mean_clsize = TH1D("th1_mean_clsize","clsize;<CL size>;counts",1000,0,100)
+th1_mean_clsize_sel = TH1D("th1_mean_clsize_sel","clsize;<CL size>;counts",1000,0,100)
+th2_eta_vs_mean_clsize = TH2D("eta_vs_mean_clsize",";#eta;<CL size>;counts",1000,0,10,1000,0,100)
+th2_eta_vs_mean_clsize_sel = TH2D("eta_vs_mean_clsize_sel",";#eta;<CL size>;counts",1000,0,10,1000,0,100)
 
 #position of the target in the telescope
 z_target = 125 #mm
@@ -55,7 +62,12 @@ for index, row in df_tracks.iterrows():
     #position of the track at z = z_target
     x = row["tracks.px"]+z_target*row["tracks.vx"]
     y = row["tracks.py"]+z_target*row["tracks.vy"]
-    
+
+    clsize_list = np.array([row["tracks.size1"], row["tracks.size2"], row["tracks.size3"], row["tracks.size4"], row["tracks.size5"]])
+    clsize_list[clsize_list != 0]
+    mean_clsize = np.mean(clsize_list)
+
+    th1_mean_clsize.Fill(mean_clsize)
     th1vxy.Fill(row["tracks.vx"],row["tracks.vy"])
     th1pxy.Fill(x,y)
     th1res_pxy.Fill(x-x0,y-y0)
@@ -66,10 +78,15 @@ for index, row in df_tracks.iterrows():
     p =  math.sqrt(row["tracks.vx"]**2+row["tracks.vy"]**2+1)
     eta = math.log((p+1)/(p-1))/2.
 
+    th2_eta_vs_mean_clsize.Fill(eta,mean_clsize)
+
     if dx**2+dy**2 < 5**2:#selecting the tracks 5 sigma from the primary vertex
         ntracks_sel += 1
         th1_eta_sel.Fill(eta)
         eta_list_sel.append(eta)
+        th1res_pxy_sel.Fill(x-x0,y-y0)
+        th1_mean_clsize_sel.Fill(mean_clsize)
+        th2_eta_vs_mean_clsize_sel.Fill(eta,mean_clsize)
 
     th1_eta.Fill(eta)
     eta_list.append(eta)
@@ -132,6 +149,9 @@ proj_eta.Draw()
 cv.SaveAs("../results/figure/centralEtaSelected.png")
 
 th1res_pxy.Write()
+th1res_pxy_sel.Write()
+th1_mean_clsize.Write()
+th1_mean_clsize_sel.Write()
 th1res_pxy.Draw("colz")
 cv.SaveAs("../results/figure/resAtZtarget.png")
 
@@ -159,4 +179,15 @@ th2_eta_vs_mult_sel.Write()
 th2_eta_vs_mult.Write()
 proj_eta.Draw()
 cv.SaveAs("../results/figure/centralEtaSelected.png")
+
+cv2 = TCanvas("cv2","cv2",600,600)
+gStyle.SetPalette(kRainBow)
+th2_eta_vs_mean_clsize.Draw("COLZ")
+cv2.SaveAs("../results/figure/etaVsMeanCLsize.png")
+
+th2_eta_vs_mean_clsize_sel.Draw("COLZ")
+cv2.SaveAs("../results/figure/etaVsMeanCLsizeSelected.png")
+
+th2_eta_vs_mean_clsize.Write()
+th2_eta_vs_mean_clsize_sel.Write()
 output.Close()

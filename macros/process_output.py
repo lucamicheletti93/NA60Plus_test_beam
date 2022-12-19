@@ -17,10 +17,10 @@ from ROOT import TCanvas, TFile, TTree, TTreeReader, TH1F, TH2F, TLatex, TLegend
 from ROOT import gStyle, gPad, kRed, kBlue, kGreen, kOrange, kAzure, kBlack
 from ctypes import cdll
 sys.path.append('../utils')
-from plot_library import LoadStyle, SetLegend, SetHistStyle, SetLatex, SetHistStyle2
+from plot_library import LoadStyle, SetLegend, SetHistStyle, SetLatex, SetHistStyle2, SetHistStyle3, SetHistStyle4
 
 ###
-def read_data(fInName):
+def read_data(path):
     '''
     Function to read the reduced tables and produce the output for ML training
     '''
@@ -38,8 +38,8 @@ def read_data(fInName):
     fInCounter = 0
     fInNames = []
     for vbb in vbbs:
-        for file in os.listdir("/Users/lucamicheletti/GITHUB/NA60Plus_test_beam/test_beam_november_2022/data"):
-            d = os.path.join("/Users/lucamicheletti/GITHUB/NA60Plus_test_beam/test_beam_november_2022/data", file)
+        for file in os.listdir(path):
+            d = os.path.join(path, file)
             if vbb in d and ithr in d:
                 if not "ClusterCut" in d:
                     print(fInCounter)
@@ -88,7 +88,7 @@ def read_data(fInName):
     for iPlane in range(0, 7):
         canvasPixelMult.cd(iPlane+1)
         gPad.SetLogx()
-        gPad.SetLogy()
+        #gPad.SetLogy()
         hists_0[iPlane].Draw("EP")
         hists_1[iPlane].Draw("EPsame")
         hists_2[iPlane].Draw("EPsame")
@@ -104,13 +104,75 @@ def read_data(fInName):
 
     exit()
     
+def beam_spot(fInName):
+    alpidePitch = 28 #um
+    fIn = TFile.Open(fInName)
+    histHitMap = []
+    histX = []
+    histY = []
+    funcX = []
+    funcY = []
+    histScanX = TH1F("histScanX", "", 7, 0, 7)
+    SetHistStyle4(histScanX, "histScanX", "Plane", "Width", ROOT.kAzure+2, 2)
+    histScanY = TH1F("histScanY", "", 7, 0, 7)
+    SetHistStyle4(histScanY, "histScanY", "Plane", "Width", ROOT.kAzure+2, 2)
+
+    for iPlane in range(0, 7):
+        histHitMap.append(fIn.Get("EventLoaderEUDAQ2/ALPIDE_{}/hitmap".format(iPlane)))
+        histHitMap[iPlane].SetDirectory(0)
+        histX.append(histHitMap[iPlane].ProjectionX("ALPIDE_{}_X".format(iPlane)))
+        SetHistStyle3(histX[iPlane], "ALPIDE_{}_X".format(iPlane), "n. pixels", "entries", ROOT.kBlack, 2, 3005, 0.5)
+        funcX.append(TF1("func_ALPIDE_{}_X".format(iPlane), "gaus", 0, 500))
+        histY.append(histHitMap[iPlane].ProjectionY("ALPIDE_{}_Y".format(iPlane)))
+        SetHistStyle3(histY[iPlane], "ALPIDE_{}_Y".format(iPlane), "n. pixels", "entries", ROOT.kBlack, 2, 3005, 0.5)
+        funcY.append(TF1("func_ALPIDE_{}_Y".format(iPlane), "gaus", 0, 500))
+
+    canvasX = ROOT.TCanvas("canvasX", "", 1200, 2400)
+    canvasX.Divide(4, 2)
+    for iPlane in range(0, 7):
+        canvasX.cd(iPlane+1)
+        gStyle.SetOptFit(1111)
+        histX[iPlane].Draw("EP")
+        histY[iPlane].Fit(funcX[iPlane])
+        histScanX.SetBinContent(iPlane+1, funcX[iPlane].GetParameter(2) * alpidePitch)
+        histScanX.SetBinError(iPlane+1, funcX[iPlane].GetParError(2) * alpidePitch)
+    canvasX.cd(8)
+    gStyle.SetOptStat(0)
+    histScanX.Draw("EPsame")
+    canvasX.Update()
+    canvasX.SaveAs("x_projection.pdf")
+
+    canvasY = ROOT.TCanvas("canvasY", "", 1200, 2400)
+    canvasY.Divide(4, 2)
+    for iPlane in range(0, 7):
+        canvasY.cd(iPlane+1)
+        gStyle.SetOptFit(1111)
+        histY[iPlane].Draw("EP")
+        histY[iPlane].Fit(funcY[iPlane])
+        histScanY.SetBinContent(iPlane+1, funcY[iPlane].GetParameter(2) * alpidePitch)
+        histScanY.SetBinError(iPlane+1, funcY[iPlane].GetParError(2) * alpidePitch)
+    canvasY.cd(8)
+    gStyle.SetOptStat(0)
+    histScanY.Draw("EPsame")
+    canvasY.Update()
+    canvasY.SaveAs("y_projection.pdf")
+
+    input()
+
+    
+
+
 
 def main():
     parser = argparse.ArgumentParser(description='Arguments to pass')
-    parser.add_argument("--read_data", help="Read data and produce output histograms", action="store_true")
+    parser.add_argument("--read", help="Read data and produce output histograms", action="store_true")
+    parser.add_argument("--beam_spot", help="Extract the beam spot via fit", action="store_true")
     args = parser.parse_args()
 
-    if args.read_data:
-        read_data("../test_beam_november_2022/data/resultscheck_0V_Ithr_240_473181837221123181842.root")
+    if args.read:
+        read_data("/Users/lucamicheletti/GITHUB/NA60Plus_test_beam/data/test_beam_november_2022")
+    if args.beam_spot:
+        beam_spot("/Users/lucamicheletti/GITHUB/NA60Plus_test_beam/data/test_beam_november_2022/resultscheck_0V_Ithr_240_473212644221123212649.root")
+
 
 main()
