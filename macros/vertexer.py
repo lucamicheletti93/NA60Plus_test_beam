@@ -36,5 +36,4 @@ result = optimize.minimize(objective_function, initial_guess, method='BFGS')
 
 # Retrieve the results
 optimized_parameters = result.x
-minimum_value = result.fun
 print(optimized_parameters)
