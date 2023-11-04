@@ -150,6 +150,8 @@ def read_tree(path, compute_sigmas = False, config = "", nsigma = 1, suffix ="")
             n_con = vertex[3]
             #print(vertex)
 
+            hMultiplicity.Fill(ntracks)
+            hMultiplicitySel.Fill(ntracks_sel)
             ntracks = 0
             ntracks_sel = 0
         ntracks += 1
@@ -168,13 +170,15 @@ def read_tree(path, compute_sigmas = False, config = "", nsigma = 1, suffix ="")
 
         eta = math.atanh(1./math.sqrt(row["tracks.vx"]**2+row["tracks.vy"]**2+1))
 
-        #if dx**2+dy**2 < 5**2: #selecting the tracks 5 sigma from the primary vertex
-        ntracks_sel += 1
-        #if n_con > 0:
+        if dx**2+dy**2 < 5**2: #selecting the tracks 5 sigma from the primary vertex
+            ntracks_sel += 1
+            #if n_con > 0:
         res_tracks_pv.Fill(x-x0, y-y0)
     
     vertexer.define_PV_selection(res_tracks_pv, config, "VTX")
     res_tracks_pv.Write()
+    hMultiplicity.Write()
+    hMultiplicitySel.Write()
     output.Close()
 
 def plot_results():
