@@ -18,15 +18,9 @@ def fit_primary_vertex(tracks, beam, z_target):
 
     # Initial guess
     initial_guess = [x0, y0 , z_target]
-    #print("fit:")
-    #print(tracks)
-    #print(initial_guess)
 
     # Optimize the function using the BFGS method
     result = optimize.minimize(distToPvSquared, initial_guess, method='BFGS', tol=1e-5)
-
-    #print(result.x)
-
     # Retrieve the results
     return result.x
 
