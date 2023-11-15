@@ -1,4 +1,5 @@
 from ROOT import TH1D,TH2D, TFile, TF2, TCanvas, kRed, TLegend, TFile, gStyle, kRainBow, TTree
+import ROOT
 import uproot
 import numpy as np
 import math
@@ -8,12 +9,34 @@ import pandas as pd
 from array import array
 import yaml
 import os
+import sys
+import time
+import copy
+from loading_bar import loading_bar
+"""
+TODO: 
+- add loading bar to tell the progress
+- add possibility to save the primary vertexes
+- tell the execution time
+- add event selections:
+    - remove beam tails: x_PV, y_PV selections, may go outside the masked region
+    - remove event with z_PV outside the target region 
+    - only events where the vertex is reconstructed ncontributors > 0
+    - beam cluster size > threshold; maybe cl1 > 20 or 30 
+    - 
+
+- add tracks selection:
+    - cluster size? average cluster size?
+
+- improve tree reading:
+    - it crashes if the number of entries in the dataframe is too large
+"""
 
 def read_tree(path, compute_sigmas = False, config = "", nsigma = 1, suffix =""):
     #put here the path of the file you want to analyze
     df_beam = uproot.open(path)['Tracking4D/tree/event/beam'].arrays(library="pd")
-    df_tracks = uproot.open(path)['Tracking4D/tree/event/tracks'].arrays(library="pd")
-
+    df_tracks = uproot.open(path)['Tracking4D/tree/event/tracks'].arrays(library="pd", entry_stop=100)
+    
     with open(os.path.expandvars(config), 'r') as stream:
         try:
             params = yaml.full_load(stream)
@@ -21,6 +44,7 @@ def read_tree(path, compute_sigmas = False, config = "", nsigma = 1, suffix ="")
             print(exc)
     
     target = params["TARGET"]
+    print(target)
     z_target = params["Z_TARGET"]
     thickness = params["THICKNESS"]
     interaction_prob = params["INTERACTION_PROB"]
@@ -35,6 +59,7 @@ def read_tree(path, compute_sigmas = False, config = "", nsigma = 1, suffix ="")
     mean_x_vtx = params["MEAN_X_VTX"]
     mean_y_vtx = params["MEAN_Y_VTX"]
     
+    MIN_CL_BEAM = params["MIN_CL_BEAM"]
 
     old_index = 0
 
@@ -58,21 +83,31 @@ def read_tree(path, compute_sigmas = False, config = "", nsigma = 1, suffix ="")
     res_tracks_pv = TH2D("res_tracks_pv","track position - PV position at z = z_target; x_{trk}-x_{V} (mm); y_{trk}-y_{V} (mm)",2000,-5,5,2000,-5,5)
     hMultiplicity = TH1D("hMultiplicity",";track multiplicity;",500,0,499.5)
     hMultiplicitySel = TH1D("hMultiplicitySel",";track multiplicity;",500,0,499.5)
+    hEta = TH1D("hEta",";#eta;",100,0,10)
+    hEtaSel = TH1D("hEtaSel",";#eta;",100,0,10)
     hNcontr = TH1D("hNcontr",";number of contributors;",100,0,99.5)
-    hNcontrVsZ = TH2D("hNcontrVsZ",";number of contributors;z_{v} (mm]);",100,0,99.5,100,0,150)
+    hNcontrVsZ = TH2D("hNcontrVsZ",";number of contributors;z_{v} (mm]);",100,0,99.5,1000,-2000,1000)
     hDeltaPbPVX = TH1D("hDeltaPbPVX",";x_{Pb}-x_{v} (mm);",1000,-0.5,0.5)
     hDeltaPbPVY = TH1D("hDeltaPbPVY",";y_{Pb}-y_{v} (mm);",1000,-0.5,0.5)
+    hBeamVx = TH1D("hBeamVx","Beam direction x;beam v_{x};",1000,-0.1,0.1)
+    hBeamVy = TH1D("hBeamVy","Beam direction y;beam v_{y};",1000,-0.1,0.1)
     hVertexX = TH1D("hVertexX",";x_{v} (mm);",100,-10,10)
     hVertexY = TH1D("hVertexY",";y_{v} (mm);",100,-10,10)
-    hVertexZ = TH1D("hVertexZ",";z_{v} (mm);",1000,25,125)
-    hVertexZHighMult = TH1D("hVertexZHighMult",";z_{v} (mm);",1000,25,125)
-
+    hVertexZ = TH1D("hVertexZ",";z_{v} (mm);",100000,-2000,1000)
+    hVertexZHighMult = TH1D("hVertexZHighMult",";z_{v} (mm);",100000,-2000,1000)
+    file_ev = TFile(path, "r")
+    hist_ev = file_ev.Get("EventLoaderEUDAQ2/ALPIDE_2/hPixelMultiplicityPerCorryEvent")
+    nev_tot = hist_ev.GetEntries()
     #Vertexing
     df_vtx = pd.DataFrame(columns=df_tracks.columns.tolist())
     primary_vertexes = []
     # position (xv,yv,zv), nummber of contributors
     n_contributors = 0
+    #loop over the index
+    skip_event = False
     for index, row in df_tracks.iterrows():
+        if skip_event:
+            continue
         if old_index != index[0]:
             vertex = vertexer.fit_primary_vertex(df_vtx, df_beam.iloc[old_index],z_target)
             primary_vertexes.append([vertex[0],vertex[1],vertex[2],n_contributors])
@@ -80,10 +115,18 @@ def read_tree(path, compute_sigmas = False, config = "", nsigma = 1, suffix ="")
             hDeltaPbPVX.Fill(x0-vertex[0])
             hDeltaPbPVY.Fill(y0-vertex[1])
             old_index = index[0]
+            #loading_bar(old_index,tot_event=nev_tot)
+            ##iterations = old_index/nev_tot*50.
+            ##loading_bar(##iterations)
             vx = df_beam.at[df_beam.index[old_index],"beam.vx"]
             vy = df_beam.at[df_beam.index[old_index],"beam.vy"]
             px = df_beam.at[df_beam.index[old_index],"beam.px"]
             py = df_beam.at[df_beam.index[old_index],"beam.py"]
+            
+            min_clsiz = min(df_beam.at[df_beam.index[old_index],"beam.size1"], df_beam.at[df_beam.index[old_index],"beam.size2"])
+
+            hBeamVx.Fill(vx)
+            hBeamVy.Fill(vy)
             hVertexX.Fill(vertex[0])
             hVertexY.Fill(vertex[1])
             if n_contributors > 0:
@@ -96,6 +139,10 @@ def read_tree(path, compute_sigmas = False, config = "", nsigma = 1, suffix ="")
             n_contributors = 0
             x0 = vx*z_target+px
             y0 = vy*z_target+py
+            skip_event = False
+            #print(min_clsiz)
+            #if min_clsiz < MIN_CL_BEAM:
+            #    skip_event = True
         
         x0 = vx*z_target+px
         y0 = vy*z_target+py
@@ -110,24 +157,27 @@ def read_tree(path, compute_sigmas = False, config = "", nsigma = 1, suffix ="")
             #row_to_add = df_tracks.iloc[0]  # Select the first row from df1
             df_vtx = df_vtx.append(row, ignore_index=True)
 
-    vertexer.define_PV_selection(res_tracks_pb, config, "Pb")
+    #vertexer.define_PV_selection(res_tracks_pb, config, "Pb")
+    
     output = TFile("../results/output_na60plus_nsigma"+str(nsigma)+"_"+suffix+".root","recreate")
     subdir_vtx = output.mkdir("vertex-qa")
     subdir_vtx.cd()
     res_tracks_pb.Write()
     hDeltaPbPVX.Write()
     hDeltaPbPVY.Write()
+    hBeamVx.Write()
+    hBeamVy.Write()
     hVertexX.Write()
     hVertexY.Write()
     hVertexZ.Write()
     hVertexZHighMult.Write()
     hNcontr.Write()
     hNcontrVsZ.Write()
+    
 
     subdir_mult = output.mkdir("multiplicity")
     subdir_mult.cd()
     #analysis
-    print(len(primary_vertexes))
     old_index = 0
     vertex = primary_vertexes[0]
     x0 = vertex[0]
@@ -135,21 +185,37 @@ def read_tree(path, compute_sigmas = False, config = "", nsigma = 1, suffix ="")
     z0 = vertex[2]
     n_con = vertex[3]
     counter = 0
-    for index, row in df_tracks.iterrows():
+    #iterations = old_index/nev_tot*50
+    #loading_bar(#iterations)
+    
+    for index, row in df_tracks.iterrows(): 
+        if skip_event:
+            continue
+
         if old_index != index[0]:
-            old_index = index[0]
+            old_index = index[0]   
+            #loading_bar(old_index,tot_event=nev_tot,process="Analysis")
+            
+            #iterations = old_index/nev_tot*50
+            #loading_bar(iterations)
+            #position of the Pb ion
+            #print(vertex)
+
+            min_clsiz = min(df_beam.at[df_beam.index[old_index],"beam.size1"], df_beam.at[df_beam.index[old_index],"beam.size2"])
+            skip_event = False
+            #if min_clsiz < MIN_CL_BEAM:
+            #    skip_event = True
+            #else:
             counter += 1
             if counter == len(primary_vertexes):
                 break
             vertex = primary_vertexes[counter]
-            #position of the Pb ion
             x0 = vertex[0]
             y0 = vertex[1]
             z0 = vertex[2]
 
-            n_con = vertex[3]
-            #print(vertex)
 
+            n_con = vertex[3]
             hMultiplicity.Fill(ntracks)
             hMultiplicitySel.Fill(ntracks_sel)
             ntracks = 0
@@ -164,83 +230,79 @@ def read_tree(path, compute_sigmas = False, config = "", nsigma = 1, suffix ="")
         clsize_list[clsize_list != 0]
         mean_clsize = np.mean(clsize_list)
 
-        dx = ((x-x0)-mean_x)/sigma_x_vtx
-        dy = ((y-y0)-mean_y)/sigma_y_vtx
+        dx = ((x-x0)-mean_x_vtx)/sigma_x_vtx
+        dy = ((y-y0)-mean_y_vtx)/sigma_y_vtx
 
 
         eta = math.atanh(1./math.sqrt(row["tracks.vx"]**2+row["tracks.vy"]**2+1))
 
         if dx**2+dy**2 < 5**2: #selecting the tracks 5 sigma from the primary vertex
             ntracks_sel += 1
+            hEtaSel.Fill(eta)
+        hEta.Fill(eta)
             #if n_con > 0:
         res_tracks_pv.Fill(x-x0, y-y0)
     
-    vertexer.define_PV_selection(res_tracks_pv, config, "VTX")
+    #vertexer.define_PV_selection(res_tracks_pv, config, "VTX")
     res_tracks_pv.Write()
     hMultiplicity.Write()
     hMultiplicitySel.Write()
+    hEta.Write()
+    hEtaSel.Write()
     output.Close()
 
-def plot_results():
-    fIn = TFile("../results/output_na60plus.root")
-    th1vxy = fIn.Get("tracks_vxy")
-    th1pxy = fIn.Get("tracks_pxy")
-    proj_eta = fIn.Get("central_eta")
-    th1res_pxy = fIn.Get("res_tracks_pxy")
-    th1res_pxy_sel = fIn.Get("res_tracks_pxy_sel")
-    th2_eta_vs_mult = fIn.Get("eta_vs_mult")
-    th2_eta_vs_mult_sel = fIn.Get("eta_vs_mult_sel")
-    th1_multi = fIn.Get("multiplicity")
-    th1_multi_sel = fIn.Get("multiplicity selected")
-    th1_eta = fIn.Get("eta")
-    th1_eta_sel = fIn.Get("eta_sel")
-    th1_mean_clsize = fIn.Get("th1_mean_clsize")
-    th1_mean_clsize_sel = fIn.Get("th1_mean_clsize_sel")
-    th2_eta_vs_mean_clsize = fIn.Get("eta_vs_mean_clsize")
-    th2_eta_vs_mean_clsize_sel = fIn.Get("eta_vs_mean_clsize_sel")
+    sys.stdout.write('\n')
+    sys.stdout.flush()
 
-    legend_eta = TLegend(0.7,0.7,0.9,0.9)
-    legend_eta.AddEntry(th1_eta,"Before selection","lep")
-    legend_eta.AddEntry(th1_eta_sel,"After selection","lep")
+def plot_results(path_list, data_list, config_list):
+    legend_multiplicity = TLegend(0.7,0.7,0.9,0.9)
+    color_list = [
+                   ROOT.kRed,
+                   ROOT.kBlue,
+                   ROOT.kGreen,
+                   ROOT.kOrange,
+                   ROOT.kBlack,
+                      
+                ]
+    cv_multiplicity = TCanvas("cv_multiplicity", "cv_multiplicity")
 
-    legend_multi = TLegend(0.7,0.7,0.9,0.9)
-    legend_multi.AddEntry(th1_multi,"Before selection","lep")
-    legend_multi.AddEntry(th1_multi_sel,"After selection","lep")
+    # Create a list to store the cloned histograms
+    cloned_histograms = []
 
-    cv = TCanvas("cv","cv",1600,1200)
-    th1pxy.Draw("colz")
-    cv.SaveAs("../results/figure/tracksAtZtarget.png")
+    for path, data, config, color in zip(path_list, data_list, config_list, color_list):
+        fIn = TFile(path)
+        hMulti = fIn.Get("multiplicity/hMultiplicitySel")
+        file_ev = TFile(data, "r")
+        hist_ev = file_ev.Get("EventLoaderEUDAQ2/ALPIDE_2/hPixelMultiplicityPerCorryEvent")
+        nev_tot = hist_ev.GetEntries()
 
-    proj_eta.Draw()
-    cv.SaveAs("../results/figure/centralEtaSelected.png")
+        with open(os.path.expandvars(config), 'r') as stream:
+            try:
+                params = yaml.full_load(stream)
+            except yaml.YAMLError as exc:
+                print(exc)
 
-    th1res_pxy.Draw("colz")
-    cv.SaveAs("../results/figure/resAtZtarget.png")
+        TARGET = params["TARGET"]
+        MASS_NUMBER = params["MASS_NUMBER"]
 
-    th1_multi.SetLineColor(kRed)
-    th1_multi.Draw()
-    legend_multi.Draw()
-    th1_multi_sel.Draw("same")
-    cv.SetLogy()
-    cv.SaveAs("../results/figure/multiplicity.png")
+        # Create a copy of the histogram
+        hMultiClone = hMulti.Clone("hMultiClone_" + TARGET)
+        hMultiClone.Scale(1.0 / (MASS_NUMBER * nev_tot))
+        hMultiClone.SetLineColor(color)
+        hMultiClone.GetYaxis().SetTitle("event/(#trigger x A)")
+        hMultiClone.GetXaxis().SetRangeUser(0, 150)
 
-    th1_eta.SetLineColor(kRed)
-    th1_eta.Draw()
-    cv.SetLogy(0)
-    legend_eta.Draw()
-    th1_eta_sel.Draw("same")
-    cv.SaveAs("../results/figure/eta.png")
+        cv_multiplicity.cd()
+        hMultiClone.Draw("same")
+        cloned_histograms.append(hMultiClone)  # Store the clone in the list
+        legend_multiplicity.AddEntry(hMultiClone, TARGET, "lep")
 
-    proj_eta.Draw()
-    cv.SaveAs("../results/figure/centralEtaSelected.png")
+    legend_multiplicity.Draw()
+    cv_multiplicity.SetLogy()
+    cv_multiplicity.SaveAs("multiplicity.png")
 
-    cv2 = TCanvas("cv2","cv2",800,600)
-    gStyle.SetPalette(kRainBow)
-    th2_eta_vs_mean_clsize.Draw("COLZ")
-    cv2.SaveAs("../results/figure/etaVsMeanCLsize.pdf")
 
-    th2_eta_vs_mean_clsize_sel.Draw("COLZ")
-    cv2.SaveAs("../results/figure/etaVsMeanCLsizeSelected.pdf")
+
 
 
 def main():
@@ -253,15 +315,40 @@ def main():
 
 
     if args.read_tree:
-        sigma_list = [3]
-        for sigma in sigma_list:
-            path_new = "/home/giacomo/its-corryvreckan-tools/output/2023-10_SPS/Target/analysis_422213212231017213217_Ag_planes_6.root"
-            path_old = "/home/giacomo/its-corryvreckan-tools/output/2023-10_SPS/Target/analysis_422191053231017193343_Pb_planes_6.root"
-            path_be = "/home/giacomo/its-corryvreckan-tools/output/2023-10_SPS/Target/analysis_422231249231017231254_Be_planes_6.root"
-            read_tree(path= path_be,compute_sigmas=args.update,config=args.config,nsigma=sigma, suffix="422213212231017213217_Be_planes_6")
+        suffix = "422213213231017215647_Ag_planes_6" 
+        suffix = "422231252231018000301_Be_planes_6" 
+        suffix = "423133844231018133850_False_planes_6" 
+        suffix = "423140916231018140921_S_planes_6" 
+        suffix = "423173815231018173820_Pb_planes_6"
+        suffix = "422231252231018000301_Be_planes_6" 
+        suffix = "422231250231017232859_Be_planes_3"
+        #analysis_422231250231017232859_Be_planes_2_Unique_False.root
+        suffix = "422231250231017232859_Be_planes_2_Unique_False_dEta0.08"
+        path = "/home/giacomo/NA60+_test_beam_data/NA60Plus_test_beam/analysis_"+suffix+".root"
+
+        read_tree(path= path,compute_sigmas=True,config=args.config,nsigma=3, suffix=suffix)
 
     if args.plot_results:
-        plot_results()
-
+        path_Ag = "/home/giacomo/its-corryvreckan-tools/output/2023-10_SPS/Target/analysis_422213212231017213217_Ag_planes_6.root"
+        path_Air = "/home/giacomo/its-corryvreckan-tools/output/2023-10_SPS/Target/analysis_422191053231017193343_Pb_planes_6.root"
+        path_Be = "/home/giacomo/its-corryvreckan-tools/output/2023-10_SPS/Target/analysis_422231249231017231254_Be_planes_6.root"
+        path_Pb = "/home/giacomo/NA60+_test_beam_data/NA60Plus_test_beam/analysis_423133844231018133850_False_planes_6.root"
+        path_S = "/home/giacomo/NA60+_test_beam_data/NA60Plus_test_beam/analysis_423140916231018140921_S_planes_6.root"
+        path_list = [
+                        "/home/giacomo/NA60+_test_beam_data/NA60Plus_test_beam/results/output_na60plus_nsigma3_Sulfur.root",
+                        "/home/giacomo/NA60+_test_beam_data/NA60Plus_test_beam/results/output_na60plus_nsigma3_ARg.root"
+                    ]
+            
+        config_list = [
+                        "/home/giacomo/NA60+_test_beam_data/NA60Plus_test_beam/macros/configs/linear_setup_S.yaml",
+                        "/home/giacomo/NA60+_test_beam_data/NA60Plus_test_beam/macros/configs/linear_setup_Ag.yaml"
+                    ]
+        
+        data_list = [
+                        "/home/giacomo/NA60+_test_beam_data/NA60Plus_test_beam/analysis_423140916231018140921_S_planes_6.root",
+                        "/home/giacomo/NA60+_test_beam_data/NA60Plus_test_beam/analysis_422213213231017215647_Ag_planes_6.root"
+                    ]
+            
+        plot_results(path_list, data_list, config_list)
 
 main()
