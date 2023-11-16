@@ -30,6 +30,8 @@ TODO:
 
 - improve tree reading:
     - it crashes if the number of entries in the dataframe is too large
+
+- plot results doesn't really work
 """
 
 def read_tree(path, compute_sigmas = False, config = "", nsigma = 1, suffix =""):
@@ -315,15 +317,7 @@ def main():
 
 
     if args.read_tree:
-        suffix = "422213213231017215647_Ag_planes_6" 
-        suffix = "422231252231018000301_Be_planes_6" 
-        suffix = "423133844231018133850_False_planes_6" 
-        suffix = "423140916231018140921_S_planes_6" 
-        suffix = "423173815231018173820_Pb_planes_6"
-        suffix = "422231252231018000301_Be_planes_6" 
-        suffix = "422231250231017232859_Be_planes_3"
-        #analysis_422231250231017232859_Be_planes_2_Unique_False.root
-        suffix = "422231250231017232859_Be_planes_2_Unique_False_dEta0.08"
+        suffix = "422231250231017232859_Be_planes_2_Unique_False"
         path = "/home/giacomo/NA60+_test_beam_data/NA60Plus_test_beam/analysis_"+suffix+".root"
 
         read_tree(path= path,compute_sigmas=True,config=args.config,nsigma=3, suffix=suffix)
