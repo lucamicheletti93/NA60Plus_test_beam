@@ -6,12 +6,14 @@
  * This software is distributed under the terms of the MIT License, copied verbatim in the file "LICENSE.md".
  * In applying this license, CERN does not waive the privileges and immunities granted to it by virtue of its status as an
  * Intergovernmental Organization or submit itself to any jurisdiction.
+ * SPDX-License-Identifier: MIT
  */
 
 #ifndef TRACKING4D_H
 #define TRACKING4D_H 1
 
 #include <TCanvas.h>
+#include <TF1.h>
 #include <TH1F.h>
 #include <TH2F.h>
 #include <TTree.h>
@@ -27,8 +29,6 @@
 namespace corryvreckan {
     /** @ingroup Modules
      */
-
-
     class Tracking4D : public Module {
 
     public:
@@ -45,16 +45,10 @@ namespace corryvreckan {
         TH1F* trackChi2;
         TH1F* clustersPerTrack;
         TH1F* trackChi2ndof;
-        TH1F* trackTime;
-        TH1F* trackTimeTrigger;
-        TH2F* trackTimeTriggerChi2;
         TH1F* tracksPerEvent;
-        TH2F* tracksPerEventVsEta;
         TH1F* trackAngleX;
         TH1F* trackAngleY;
-        TH1F* tracksVsTime;
-        TH1F* meanClusterSizePerTrack;
-
+        TH1F* hFilter;
         std::map<std::string, TH1F*> residualsX_local;
         std::map<std::string, TH1F*> residualsXwidth1_local;
         std::map<std::string, TH1F*> residualsXwidth2_local;
@@ -80,36 +74,39 @@ namespace corryvreckan {
         std::map<std::string, TH1F*> residualsYwidth2_global;
         std::map<std::string, TH1F*> residualsYwidth3_global;
         std::map<std::string, TH1F*> pullY_global;
-        std::map<std::string, TH1F*> residualsZ_global;
-
-        std::map<std::string, TH1F*> kinkX;
-        std::map<std::string, TH1F*> kinkY;
 
         std::map<std::string, TH2F*> local_intersects_;
+        std::map<std::string, TH2F*> global_intersects_;
 
         // Cuts for tracking
-        double momentum_;
         double max_plot_chi2_;
-        double volume_radiation_length_;
         size_t min_hits_on_track_;
         bool exclude_DUT_;
-        bool use_volume_scatterer_;
+        bool apply_selections_;
         bool reject_by_ROI_;
         bool unique_cluster_usage_;
+        float max_delta_eta_;
+        float min_eta_y_;
+        float min_eta_x_;
+        float max_eta_;
+        float target_position_;
+
+        std::map<std::string, float> spatial_cuts_;
+        float spatial_cuts_max_;
+        int max_range_multiplicity_;
         std::vector<std::string> require_detectors_;
         std::vector<std::string> exclude_from_seed_;
-        std::map<std::shared_ptr<Detector>, double> time_cuts_;
-        std::map<std::shared_ptr<Detector>, XYVector> spatial_cuts_;
-        std::string timestamp_from_;
-        std::string track_model_;
+        std::map<std::shared_ptr<Detector>, XYVector> spatial_cuts_tmp_;
+
+
 
         // Tree with the tracks and event information
         TTree* event_info;
         CorryEvent* event_corry;
-        std::vector<double> eta_vector;
 
-        // Function to calculate the weighted average timestamp from the clusters of a track
-        double calculate_average_timestamp(const Track* track);
+        
+        // Define your custom function
+        double eta_threshold(double x, double params);
     };
 } // namespace corryvreckan
 #endif // TRACKING4D_H
