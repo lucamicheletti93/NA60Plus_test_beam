@@ -18,9 +18,3 @@
    ```ruby
    ./compile_corry_changes.sh
    ```
-## TODO list
-```[tasklist]
-### My tasks
-- [ ] https://github.com/octo-org/octo-repo/issues/45
-- [ ] Draft task
-```
